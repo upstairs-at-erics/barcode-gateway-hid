@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Barcode Gateway</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <nav class="navbar navbar-expand navbar-dark mb-4" style="background-color:#16243d;border-bottom:1px solid #2b4470">
+    <div class="container">
+      <a class="navbar-brand" href="/">Barcode Gateway</a>
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item"><a class="nav-link {{ 'active' if page=='scans' }}" href="/">Scans</a></li>
+        <li class="nav-item"><a class="nav-link {{ 'active' if page=='config' }}" href="/config">Config</a></li>
+        <li class="nav-item"><a class="nav-link" href="/api/scans">JSON</a></li>
+      </ul>
+      <span class="navbar-text small">
+        {% for r in readers if r.enabled %}
+          <span class="badge {{ 'bg-success' if r.device_path else 'bg-danger' }} ms-1" title="{{ r.device_path or 'not found' }}">{{ r.name }}</span>
+        {% else %}
+          <span class="badge bg-secondary">no readers</span>
+        {% endfor %}
+      </span>
+    </div>
+  </nav>
+  <main class="container">{% block body %}{% endblock %}</main>
+</body>
+</html>

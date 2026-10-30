@@ -1,0 +1,196 @@
+{% extends 'base.html' %}
+{% set page = 'config' %}
+{% block body %}
+{% if msg %}
+  <div class="alert alert-success py-2">{{ msg }}</div>
+{% endif %}
+
+<!-- Forwarding endpoint card -->
+<div class="card mb-4">
+  <div class="card-header text-info text-uppercase fw-semibold" style="letter-spacing: .08em;">Forwarding endpoint</div>
+  <div class="card-body">
+    <form method="post">
+      <input type="hidden" name="action" value="endpoint">
+      <div class="mb-2">
+        <label class="form-label">Endpoint URL</label>
+        <input class="form-control" name="endpoint" value="{{ conf.endpoint }}" placeholder="http://host:port/api/reader">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">
+          API key
+          {% if key_set %}
+            <span class="badge bg-success">set</span>
+          {% else %}
+            <span class="badge bg-danger">not set</span>
+          {% endif %}
+        </label>
+        <input class="form-control" type="password" name="api_key" autocomplete="new-password" placeholder="leave blank to keep current key">
+      </div>
+      <button class="btn btn-primary btn-sm">Save endpoint</button>
+    </form>
+    <div class="form-text">Each scan is POSTed as {"slug": …, "barcode": …} with Authorization: Bearer &lt;key&gt; (5 s timeout, up to 3 tries).</div>
+  </div>
+</div>
+
+<!-- Readers card -->
+<div class="card mb-4">
+  <div class="card-header text-info text-uppercase fw-semibold" style="letter-spacing: .08em;">Readers</div>
+  <div class="card-body">
+    <!-- Readers table -->
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Slug</th>
+          <th>Device</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in readers %}
+          <tr>
+            <td>{{ r.name }}</td>
+            <td class="font-monospace">{{ r.slug }}</td>
+            <td class="small">
+              {{ detected[r.device].name if r.device in detected else '' }}
+              <span class="font-monospace text-muted">{{ r.device }}</span>
+            </td>
+            <td>
+              {% if not r.enabled %}
+                <span class="badge bg-secondary">disabled</span>
+              {% elif r.device_path %}
+                <span class="badge bg-success">listening {{ r.device_path }}</span>
+              {% else %}
+                <span class="badge bg-danger">device not found</span>
+              {% endif %}
+            </td>
+            <td class="text-end text-nowrap">
+              <a class="btn btn-outline-light btn-sm" href="/config?edit={{ r.id }}">Edit</a>
+              <form method="post" class="d-inline">
+                <input type="hidden" name="action" value="toggle">
+                <input type="hidden" name="id" value="{{ r.id }}">
+                <button class="btn btn-outline-warning btn-sm">{{ 'Disable' if r.enabled else 'Enable' }}</button>
+              </form>
+              <button type="button" class="btn btn-outline-info btn-sm" data-test-reader="{{ r.id }}">Send test</button>
+              <form method="post" class="d-inline" data-delete-name="{{ r.name }}">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="id" value="{{ r.id }}">
+                <button class="btn btn-outline-danger btn-sm">Delete</button>
+              </form>
+              <div class="small mt-1" id="t{{ r.id }}"></div>
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="5" class="text-muted">No readers yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Edit reader form -->
+    <h2 class="h6 mt-3">{{ 'Edit reader' if edit else 'Add reader' }}</h2>
+    <form method="post" class="row g-2 align-items-end">
+      <input type="hidden" name="action" value="reader">
+      <input type="hidden" name="id" value="{{ edit.id if edit else '' }}">
+      <div class="col-md-3">
+        <label class="form-label">Name</label>
+        <input class="form-control" name="name" required value="{{ edit.name if edit else '' }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Slug</label>
+        <input class="form-control font-monospace" name="slug" required value="{{ edit.slug if edit else '' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Device</label>
+        <select class="form-select" name="device">
+          {% if edit and edit.device and edit.device not in detected %}
+            <option value="{{ edit.device }}" selected>{{ edit.device }} (not plugged in)</option>
+          {% endif %}
+          {% for k, d in detected.items() %}
+            <option value="{{ k }}" {{ 'selected' if edit and edit.device == k }}>{{ d.name }} — {{ k }} ({{ d.dev }})</option>
+          {% endfor %}
+          {% if not detected %}
+            <option value="">no devices detected</option>
+          {% endif %}
+        </select>
+      </div>
+      <div class="col-md-1">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="enabled" id="en" {{ 'checked' if not edit or edit.enabled }}>
+          <label class="form-check-label" for="en">Enabled</label>
+        </div>
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-primary btn-sm">{{ 'Save' if edit else 'Add' }}</button>
+        {% if edit %}
+          <a class="btn btn-secondary btn-sm" href="/config">Cancel</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Detected but not configured card -->
+<div class="card mb-4">
+  <div class="card-header">Detected but not configured</div>
+  <div class="card-body">
+    {% for d in unconfigured %}
+      <div class="small">
+        <span class="badge bg-info text-dark">{{ d.name }}</span>
+        <span class="font-monospace">{{ d.key }}</span>
+        on {{ d.dev }}
+      </div>
+    {% else %}
+      <div class="text-muted small">All detected keyboard-type devices are configured.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Script for sending test -->
+<script>
+  // Define function to send test
+  async function sendTest(id, btn) {
+    // Get the output element
+    const out = document.getElementById("t" + id);
+    // Set the output text to sending
+    out.textContent = "sending…";
+    // Disable the button
+    btn.disabled = true;
+    // Try to send test to the endpoint
+    try {
+      // Send test to the endpoint
+      const response = await fetch("/config/test/" + id, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ barcode: "TEST" }),
+      });
+      // Get the result from the response
+      const result = await response.json();
+      // Set the output text to the result
+      out.innerHTML = '<span class="badge ' + (result.ok ? "bg-success" : "bg-danger") + '"></span>';
+      out.firstChild.textContent = result.result;
+    } catch (err) {
+      out.textContent = "error: " + err;
+    }
+    btn.disabled = false;
+  }
+
+  // Add event listener to the test buttons
+  document.querySelectorAll("[data-test-reader]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      sendTest(btn.getAttribute("data-test-reader"), btn);
+    });
+  });
+
+  // Add event listener to the delete forms
+  document.querySelectorAll("form[data-delete-name]").forEach(function (form) {
+    form.addEventListener("submit", function (event) {
+      if (!confirm("Delete reader " + form.getAttribute("data-delete-name") + "?")) {
+        event.preventDefault();
+      }
+    });
+  });
+</script>
+{% endblock %}

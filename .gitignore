@@ -1,0 +1,8 @@
+# Live secrets and scan history — never commit these
+config.json
+config.json.tmp
+scans.csv
+
+__pycache__/
+*.pyc
+.cache/

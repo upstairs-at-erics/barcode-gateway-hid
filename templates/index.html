@@ -1,0 +1,260 @@
+{% extends 'base.html' %}
+{% set page = 'scans' %}
+{% block extra_head %}
+<style>
+  .latest-card {
+    background: linear-gradient(135deg, #16243d 0%, #1d3256 100%);
+    border: 1px solid #2b4470;
+    border-left: 4px solid #4d8dff;
+    border-radius: .6rem;
+    box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .3);
+  }
+  .latest-code {
+    font-family: SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 800;
+    font-size: 1.5rem;
+    letter-spacing: .04em;
+    color: #fff;
+    word-break: break-all;
+    line-height: 1.1;
+  }
+  .latest-label {
+    text-transform: uppercase;
+    letter-spacing: .15em;
+    font-size: .7rem;
+    color: #8fb3ff;
+    font-weight: 700;
+  }
+  .latest-code a { color: inherit; text-underline-offset: .15em; }
+  .flash { animation: fl 1.2s ease-out; }
+  @keyframes fl {
+    0% { box-shadow: 0 0 0 .4rem rgba(77, 141, 255, .6); }
+    100% { box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .35); }
+  }
+</style>
+{% endblock %}
+{% block body %}
+{% macro href(n) %}?page={{ n }}{% if p.reader %}&reader={{ p.reader|urlencode }}{% endif %}{% endmacro %}
+{% macro fwd_badge(ok, fwd, empty='') -%}
+  <span class="badge {{ 'bg-success' if ok else ('bg-danger' if ok == false else 'bg-secondary') }}">{{ fwd if fwd else empty }}</span>
+{%- endmacro %}
+{% macro barcode(code) -%}
+  {%- if code and (code.startswith('http://') or code.startswith('https://')) -%}
+    <a href="{{ code }}" class="link-info" target="_blank" rel="noopener noreferrer">{{ code }}</a>
+  {%- else -%}
+    {{ code }}
+  {%- endif -%}
+{%- endmacro %}
+
+<div class="d-flex align-items-center mb-3">
+  <h1 class="h4 mb-0">Arriving scans</h1>
+  <span id="live" class="badge bg-secondary ms-3">connecting…</span>
+</div>
+
+<div id="latestCard" class="latest-card px-3 py-2 mb-3">
+  <div class="d-flex justify-content-between align-items-center mb-1">
+    <span class="latest-label">Latest scan</span>
+    <span id="latestFwd" class="badge {{ 'bg-success' if latest and latest.ok else ('bg-danger' if latest and latest.ok == false else 'bg-secondary') }}">{{ latest.fwd if latest and latest.fwd else '' }}</span>
+  </div>
+  <div id="latest" class="latest-code">{% if latest %}{{ barcode(latest.code) }}{% else %}—{% endif %}</div>
+  <div class="small text-light opacity-75">
+    <span id="latestReader" class="fw-semibold">{{ latest.reader if latest else '' }}</span>
+    <span class="mx-1">·</span>
+    <span id="latestTime" data-ts="{{ latest.time if latest else '' }}" title="{{ latest.time if latest else '' }}">{{ latest.time if latest else '' }}</span>
+  </div>
+</div>
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+  <form method="get" class="d-flex align-items-center gap-2">
+    <label class="small text-muted" for="rf">Reader</label>
+    <select id="rf" name="reader" class="form-select form-select-sm" style="width: auto;">
+      <option value="">All</option>
+      {% for r in readers %}
+        <option value="{{ r.name }}" {{ 'selected' if p.reader == r.name }}>{{ r.name }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <span class="small text-muted ms-2">{{ p.total }} scan{{ '' if p.total == 1 else 's' }} · page {{ p.page }} of {{ p.pages }}</span>
+  <nav class="ms-auto">
+    <ul class="pagination pagination-sm mb-0">
+      <li class="page-item {{ 'disabled' if p.page <= 1 }}">
+        <a class="page-link" href="{{ href(p.page - 1) }}">&laquo; Prev</a>
+      </li>
+      {% for n in range(1, p.pages + 1) %}
+        {% if n == 1 or n == p.pages or (n - p.page)|abs <= 2 %}
+          <li class="page-item {{ 'active' if n == p.page }}"><a class="page-link" href="{{ href(n) }}">{{ n }}</a></li>
+        {% elif (n - p.page)|abs == 3 %}
+          <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
+      {% endfor %}
+      <li class="page-item {{ 'disabled' if p.page >= p.pages }}">
+        <a class="page-link" href="{{ href(p.page + 1) }}">Next &raquo;</a>
+      </li>
+    </ul>
+  </nav>
+</div>
+
+<div id="newNote" class="alert alert-info py-1 small d-none">
+  New scans arrived — <a href="{{ '?reader=' + p.reader|urlencode if p.reader else '/' }}">go to page 1</a>.
+</div>
+
+<table class="table table-striped table-sm">
+  <thead>
+    <tr>
+      <th style="width: 12rem;">Time</th>
+      <th>Reader</th>
+      <th>Barcode</th>
+      <th>Forward</th>
+    </tr>
+  </thead>
+  <tbody id="rows">
+    {% for s in p['items'] %}
+      <tr id="s{{ s.id }}">
+        <td>{{ s.time }}</td>
+        <td>{{ s.reader }}</td>
+        <td class="font-monospace">{{ barcode(s.code) }}</td>
+        <td>{{ fwd_badge(s.ok, s.fwd, '—') }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- Script for scanning live -->
+<script id="scan-live" data-page="{{ p.page }}" data-per="{{ p.per_page }}" data-filter="{{ p.reader }}">
+  (function () {
+    const cfg = document.getElementById("scan-live").dataset;
+    const PAGE = Number(cfg.page);
+    const PER = Number(cfg.per);
+    const FILTER = cfg.filter || "";
+    const live = document.getElementById("live");
+    const rows = document.getElementById("rows");
+    const readerFilter = document.getElementById("rf");
+
+    // Add event listener to the reader filter
+    if (readerFilter) {
+      readerFilter.addEventListener("change", function () {
+        this.form.submit();
+      });
+    }
+
+    // Define function to get the badge class for a scan
+    function isHttpUrl(code) {
+      return /^https?:\/\//i.test(code || "");
+    }
+
+    function fillCode(el, code) {
+      el.replaceChildren();
+      if (isHttpUrl(code)) {
+        const a = document.createElement("a");
+        a.href = code;
+        a.textContent = code;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.className = "link-info";
+        el.appendChild(a);
+      } else {
+        el.textContent = code;
+      }
+    }
+
+    function badgeClass(scan) {
+      if (scan.ok === true) return "badge bg-success";
+      if (scan.ok === false) return "badge bg-danger";
+      return "badge bg-secondary";
+    }
+
+    // Define function to set the live element to listening
+    function listening() {
+      live.textContent = "listening";
+      live.className = "badge bg-success ms-3";
+    }
+
+    // Define function to get the relative time for a timestamp
+    function relativeTime(ts) {
+      if (!ts) return "";
+      const seconds = (Date.now() - new Date(ts.replace(" ", "T")).getTime()) / 1000;
+      if (isNaN(seconds)) return ts;
+      if (seconds < 5) return "just now";
+      if (seconds < 60) return Math.floor(seconds) + " s ago";
+      if (seconds < 3600) return Math.floor(seconds / 60) + " min ago";
+      if (seconds < 86400) return Math.floor(seconds / 3600) + " h ago";
+      return Math.floor(seconds / 86400) + " d ago";
+    }
+
+    // Define function to set the latest time element
+    function setLatestTime(ts) {
+      const el = document.getElementById("latestTime");
+      el.dataset.ts = ts;
+      el.title = ts;
+      el.textContent = relativeTime(ts);
+    }
+
+    // Define function to tick the latest time element
+    function tickLatestTime() {
+      const el = document.getElementById("latestTime");
+      el.textContent = relativeTime(el.dataset.ts);
+    }
+
+    // Tick the latest time element and set up interval for tick
+    tickLatestTime();
+    setInterval(tickLatestTime, 5000);
+
+    // Define EventSource for the stream
+    const stream = new EventSource("/stream");
+    // Set up the event listeners for the stream
+    stream.onopen = listening;
+    stream.onerror = function () {
+      live.textContent = "reconnecting…";
+      live.className = "badge bg-warning ms-3";
+    };
+    stream.onmessage = function (event) {
+      // Set the live element to listening
+      listening();
+      // Parse the scan data from the event
+      const scan = JSON.parse(event.data);
+      // If the reader filter is set and the reader does not match, return
+      if (FILTER && scan.reader !== FILTER) return;
+      // Get the row element for the scan
+        
+      let row = document.getElementById("s" + scan.id);
+      if (!row && scan.fwd === "queued") {
+        fillCode(document.getElementById("latest"), scan.code);
+        document.getElementById("latestReader").textContent = scan.reader;
+        setLatestTime(scan.time);
+        const card = document.getElementById("latestCard");
+        card.classList.remove("flash");
+        void card.offsetWidth;
+        card.classList.add("flash");
+        if (PAGE !== 1) {
+          document.getElementById("newNote").classList.remove("d-none");
+          return;
+        }
+        row = document.createElement("tr");
+        row.id = "s" + scan.id;
+        row.innerHTML = '<td></td><td></td><td class="font-monospace"></td><td><span class="badge"></span></td>';
+        rows.prepend(row);
+        while (rows.children.length > PER) rows.lastElementChild.remove();
+        row.className = "table-success";
+        setTimeout(function () { row.className = ""; }, 2000);
+      }
+
+      // Get the latest code and timestamp
+      const latestCode = document.getElementById("latest").textContent;
+      const latestTs = document.getElementById("latestTime").dataset.ts;
+      if (latestCode === scan.code && latestTs === scan.time) {
+        const fwd = document.getElementById("latestFwd");
+        fwd.textContent = scan.fwd;
+        fwd.className = badgeClass(scan);
+      }
+      if (!row) return;
+      // Set the time, reader, code, and badge for the row
+      row.children[0].textContent = scan.time;
+      row.children[1].textContent = scan.reader;
+      fillCode(row.children[2], scan.code);
+      const badge = row.children[3].firstChild;
+      badge.textContent = scan.fwd;
+      badge.className = badgeClass(scan);
+    };
+  })();
+</script>
+{% endblock %}
