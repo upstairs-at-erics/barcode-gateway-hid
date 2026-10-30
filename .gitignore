@@ -6,3 +6,9 @@ scans.csv
 __pycache__/
 *.pyc
 .cache/
+
+# Saved Docker images (docker save / compose exports)
+*.tar
+*.tar.gz
+*.tgz
+*.img

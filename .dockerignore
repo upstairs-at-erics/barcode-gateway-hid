@@ -1,2 +1,12 @@
-*
-!Dockerfile
+.git
+.github
+.vscode
+__pycache__
+*.pyc
+.cache
+README.md
+scans.csv
+config.json
+config.json.tmp
+.dockerignore
+docker-compose.yml

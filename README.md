@@ -42,17 +42,32 @@ Fill in `endpoint` and `api_key`. Set `admin_hash` with Werkzeug (`generate_pass
 
 ## Docker
 
-Typical run: bind-mount this directory at `/app`, publish a port, and give the container `/dev` and `/sys` so hot-plugged hidraw scanners appear. Rebuild the image only when Python dependencies change:
+The image is Alpine Python (multi-stage: compiler only in the build layer). App code is copied in; `config.json` and `scans.csv` stay on the host.
+
+**This machine** (Pi 5, Pi 3B, or an Intel/AMD PC — Docker picks the host arch):
 
 ```bash
-docker build -t barcode-gateway:1.0 .
-docker restart barcode-gateway
+test -f config.json || cp config.example.json config.json
+chmod 600 config.json
+touch scans.csv
+docker compose up -d --build
+docker compose logs -f
 ```
 
-Python modules load at start. After you edit `.py` files, restart the container. HTML templates are reread on the next request.
+**One image for all boards** (amd64, arm64 for Pi 5 / 64-bit Pi 3B, arm/v7 for 32-bit Pi 3B):
 
 ```bash
-docker logs -f barcode-gateway
+docker buildx create --name multi --use 2>/dev/null || docker buildx use multi
+docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 \
+  -t YOURUSER/barcode-gateway:1.0 --push .
+```
+
+On each machine, set `image:` in `docker-compose.yml` to that tag and run `docker compose up -d`.
+
+Python modules load at start. After you edit `.py` files, rebuild or restart. HTML templates are inside the image, so change them and rebuild.
+
+```bash
+docker compose logs -f
 ```
 
 ## Code map

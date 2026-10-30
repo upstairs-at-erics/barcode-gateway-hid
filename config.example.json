@@ -2,5 +2,6 @@
   "endpoint": "http://127.0.0.1:8001/api/reader",
   "api_key": "",
   "admin_hash": "",
+  "highlight_seconds": 10,
   "readers": []
 }

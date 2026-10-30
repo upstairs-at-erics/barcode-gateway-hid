@@ -61,7 +61,13 @@ def page_args():
 @app.route('/')
 def index():
     rname, pg = page_args()
-    return render_template('index.html', p=store.page(rname, pg), latest=store.latest(rname), readers=readers_view())
+    return render_template(
+        'index.html',
+        p=store.page(rname, pg),
+        latest=store.latest(rname),
+        readers=readers_view(),
+        highlight_seconds=cfg.highlight_seconds(),
+    )
 
 # Recent scans as JSON: plain list as before; with ?reader= and/or ?page= a page object {items,page,pages,total,...}.
 @app.route('/api/scans')
@@ -87,7 +93,8 @@ def config():
     if request.method == 'POST':
         # apply the form
         msg = cfg.apply_form(request.form)
-        reader.apply()
+        if request.form.get('action') != 'display':
+            reader.apply()
         return redirect(url_for('config', msg=msg))
 
     # get the plugged in dongles

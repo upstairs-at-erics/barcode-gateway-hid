@@ -1,0 +1,33 @@
+# Barcode Gateway
+#
+# On this machine (native arch — Pi 5 arm64, Pi 3B armv7/arm64, or Intel/AMD):
+#   docker compose up -d --build
+#
+# Multi-arch image (needs Docker Buildx; qemu for foreign arches):
+#   docker buildx create --name multi --use 2>/dev/null || docker buildx use multi
+#   docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 \
+#     -t barcode-gateway:1.0 --push .
+# Then on each board: docker compose pull && docker compose up -d
+# (point `image:` at your registry tag if you pushed.)
+#
+# Create empty files before the first run so Compose does not turn them into directories:
+#   test -f config.json || cp config.example.json config.json && chmod 600 config.json
+#   touch scans.csv
+
+services:
+  barcode-gateway:
+    image: barcode-gateway:1.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8095:8095"
+    environment:
+      BIND: "0.0.0.0"
+      PORT: "8095"
+    volumes:
+      - ./config.json:/app/config.json
+      - ./scans.csv:/app/scans.csv
+      - /dev:/dev
+      - /sys:/sys:ro

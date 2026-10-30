@@ -26,6 +26,11 @@
     font-weight: 700;
   }
   .latest-code a { color: inherit; text-underline-offset: .15em; }
+  #rows tr.scan-recent > td {
+    background-color: #fd7e14 !important;
+    color: #1a1a1a;
+  }
+  #rows tr.scan-recent a { color: #1a1a1a; }
   .flash { animation: fl 1.2s ease-out; }
   @keyframes fl {
     0% { box-shadow: 0 0 0 .4rem rgba(77, 141, 255, .6); }
@@ -109,7 +114,7 @@
   </thead>
   <tbody id="rows">
     {% for s in p['items'] %}
-      <tr id="s{{ s.id }}">
+      <tr id="s{{ s.id }}" data-ts="{{ s.time }}">
         <td>{{ s.time }}</td>
         <td>{{ s.reader }}</td>
         <td class="font-monospace">{{ barcode(s.code) }}</td>
@@ -120,12 +125,13 @@
 </table>
 
 <!-- Script for scanning live -->
-<script id="scan-live" data-page="{{ p.page }}" data-per="{{ p.per_page }}" data-filter="{{ p.reader }}">
+<script id="scan-live" data-page="{{ p.page }}" data-per="{{ p.per_page }}" data-filter="{{ p.reader }}" data-fresh="{{ highlight_seconds }}">
   (function () {
     const cfg = document.getElementById("scan-live").dataset;
     const PAGE = Number(cfg.page);
     const PER = Number(cfg.per);
     const FILTER = cfg.filter || "";
+    const FRESH = Number(cfg.fresh) || 0;
     const live = document.getElementById("live");
     const rows = document.getElementById("rows");
     const readerFilter = document.getElementById("rf");
@@ -170,9 +176,22 @@
     }
 
     // Define function to get the relative time for a timestamp
+    function ageSeconds(ts) {
+      if (!ts) return Infinity;
+      const seconds = (Date.now() - new Date(ts.replace(" ", "T")).getTime()) / 1000;
+      return isNaN(seconds) ? Infinity : seconds;
+    }
+
+    function paintRecent() {
+      document.querySelectorAll("#rows tr[data-ts]").forEach(function (tr) {
+        const recent = FRESH > 0 && ageSeconds(tr.dataset.ts) < FRESH;
+        tr.classList.toggle("scan-recent", recent);
+      });
+    }
+
     function relativeTime(ts) {
       if (!ts) return "";
-      const seconds = (Date.now() - new Date(ts.replace(" ", "T")).getTime()) / 1000;
+      const seconds = ageSeconds(ts);
       if (isNaN(seconds)) return ts;
       if (seconds < 5) return "just now";
       if (seconds < 60) return Math.floor(seconds) + " s ago";
@@ -197,7 +216,9 @@
 
     // Tick the latest time element and set up interval for tick
     tickLatestTime();
+    paintRecent();
     setInterval(tickLatestTime, 5000);
+    setInterval(paintRecent, 1000);
 
     // Define EventSource for the stream
     const stream = new EventSource("/stream");
@@ -231,11 +252,13 @@
         }
         row = document.createElement("tr");
         row.id = "s" + scan.id;
+        row.dataset.ts = scan.time;
         row.innerHTML = '<td></td><td></td><td class="font-monospace"></td><td><span class="badge"></span></td>';
         rows.prepend(row);
         while (rows.children.length > PER) rows.lastElementChild.remove();
-        row.className = "table-success";
-        setTimeout(function () { row.className = ""; }, 2000);
+        row.classList.add("table-success");
+        setTimeout(function () { row.classList.remove("table-success"); }, 2000);
+        paintRecent();
       }
 
       // Get the latest code and timestamp
@@ -248,8 +271,10 @@
       }
       if (!row) return;
       // Set the time, reader, code, and badge for the row
+      row.dataset.ts = scan.time;
       row.children[0].textContent = scan.time;
       row.children[1].textContent = scan.reader;
+      paintRecent();
       fillCode(row.children[2], scan.code);
       const badge = row.children[3].firstChild;
       badge.textContent = scan.fwd;

@@ -32,6 +32,23 @@
   </div>
 </div>
 
+<div class="card mb-4">
+  <div class="card-header text-info text-uppercase fw-semibold" style="letter-spacing: .08em;">Arriving scans</div>
+  <div class="card-body">
+    <form method="post" class="row g-2 align-items-end">
+      <input type="hidden" name="action" value="display">
+      <div class="col-auto">
+        <label class="form-label" for="highlight_seconds">Orange while younger than (seconds)</label>
+        <input id="highlight_seconds" class="form-control" type="number" name="highlight_seconds" min="0" max="86400" step="1" value="{{ conf.get('highlight_seconds', 10) }}">
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-primary btn-sm">Save</button>
+      </div>
+    </form>
+    <div class="form-text">List rows stay orange until this many seconds after the scan. 0 turns it off. Stored in config.json.</div>
+  </div>
+</div>
+
 <!-- Readers card -->
 <div class="card mb-4">
   <div class="card-header text-info text-uppercase fw-semibold" style="letter-spacing: .08em;">Readers</div>

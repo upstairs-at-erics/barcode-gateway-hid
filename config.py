@@ -5,7 +5,7 @@ from werkzeug.security import check_password_hash
 # --- Config file location and defaults ------------------------------------
 BASE = os.path.dirname(os.path.abspath(__file__))
 CONF = os.environ.get('CONFIG', os.path.join(BASE, 'config.json'))
-DEFAULTS = {'endpoint': '', 'api_key': '', 'readers': []}
+DEFAULTS = {'endpoint': '', 'api_key': '', 'readers': [], 'highlight_seconds': 10}
 
 # --- Load the config file ------------------------------------
 def load():
@@ -36,6 +36,15 @@ def readers(): return conf.get('readers', [])
 # --- Get the reader by id ------------------------------------
 def reader_by_id(rid): return next((r for r in readers() if r['id'] == rid), None)
 
+
+def highlight_seconds():
+    """How long a scan row stays orange on Arriving scans. 0 turns highlighting off."""
+    try:
+        seconds = int(conf.get('highlight_seconds', DEFAULTS['highlight_seconds']))
+    except (TypeError, ValueError):
+        seconds = DEFAULTS['highlight_seconds']
+    return max(0, min(seconds, 86400))
+
 # --- Check the admin authentication ------------------------------------
 def check_admin(auth):
     """auth = flask request.authorization; user 'admin' + password matching admin_hash."""
@@ -61,6 +70,18 @@ def set_endpoint(form):
     key = form.get('api_key', '').strip()
     if key: c['api_key'] = key
     save(c); return 'Endpoint saved.'
+
+
+def set_display(form):
+    """Seconds a list row stays orange after the scan time."""
+    c = copy()
+    try:
+        seconds = int(str(form.get('highlight_seconds', '')).strip())
+    except (TypeError, ValueError):
+        return 'Highlight window not saved. Enter a whole number of seconds.'
+    c['highlight_seconds'] = max(0, min(seconds, 86400))
+    save(c)
+    return 'Highlight window saved: %s s.' % c['highlight_seconds']
 
 # --- Build a reader dict from the add/edit form ------------------------------------
 def reader_from_form(form, rid):
@@ -98,7 +119,7 @@ def toggle_reader(form):
     save(c); return 'Reader updated.'
 
 ACTIONS = {'endpoint': set_endpoint, 'reader': save_reader,
-           'delete': delete_reader, 'toggle': toggle_reader}
+           'delete': delete_reader, 'toggle': toggle_reader, 'display': set_display}
 
 # --- Apply the form ------------------------------------
 def apply_form(form):
